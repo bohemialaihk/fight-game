@@ -2,7 +2,6 @@
 
 A real-time multiplayer fighting game built with React, TypeScript, Node.js, and Socket.io.
 
-![Game Screenshot](screenshot.png)
 
 ## 🎮 Features
 
