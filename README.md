@@ -132,6 +132,132 @@ const GAME_MODES = [
 ];
 ```
 
+## 🤖 OpenClaw Integration
+
+[OpenClaw](https://openclaw.ai) is an AI agent platform with an OpenAI-compatible API that lets you connect AI bots to your fight game server. Bots connect via WebSockets, receive live game state, and respond with actions just like human players.
+
+### Getting an API Key
+
+1. Sign up at [openclaw.ai](https://openclaw.ai) and create an account.
+2. Go to **Settings → API Keys** and click **Generate New Key**.
+3. Copy the key — it looks like `sk-oc-...` and is only shown once.
+
+Store the key in your environment:
+
+```env
+OPENCLAW_API_KEY=sk-oc-your-key-here
+```
+
+> **Never commit your API key to source control.** The `.gitignore` already excludes `.env` files.
+
+### Connecting an OpenClaw Bot
+
+The example below shows a minimal Node.js bot that joins a fight game room and picks moves using the OpenClaw chat-completions endpoint:
+
+```javascript
+// openclaw-bot.js
+import { io } from 'socket.io-client';
+import fetch from 'node-fetch';
+
+const OPENCLAW_API_KEY = process.env.OPENCLAW_API_KEY;
+if (!OPENCLAW_API_KEY) {
+  console.error('Error: OPENCLAW_API_KEY environment variable is not set.');
+  process.exit(1);
+}
+
+const GAME_SERVER = 'http://localhost:3001';
+const ROOM_CODE = '123'; // room to join
+
+const socket = io(GAME_SERVER);
+
+socket.on('connect', () => {
+  socket.emit('joinRoom', {
+    room: ROOM_CODE,
+    name: 'OpenClaw Bot',
+    character: 'robot',
+    mode: 'ffa',
+  });
+});
+
+// Map the action to the keys the server expects
+const keyMap = {
+  left:   { left: true },
+  right:  { right: true },
+  jump:   { jump: true },
+  attack: { attack: true },
+  ranged: { ranged: true },
+};
+
+// Receive game state and ask OpenClaw what to do
+socket.on('gameState', async (state) => {
+  try {
+    const response = await fetch('https://api.openclaw.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENCLAW_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'openclaw-default',
+        messages: [
+          {
+            role: 'system',
+            content: 'You control a fighter. Reply with one action: left, right, jump, attack, or ranged.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(state),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`OpenClaw API error: ${response.status} ${response.statusText}`);
+      return;
+    }
+
+    const data = await response.json();
+    const action = data?.choices?.[0]?.message?.content?.trim().toLowerCase();
+
+    if (!action) {
+      console.error('OpenClaw returned an empty or unexpected response:', data);
+      return;
+    }
+
+    if (keyMap[action]) {
+      socket.emit('keys', keyMap[action]);
+    } else {
+      console.warn(`Unrecognized action from OpenClaw: "${action}". Expected one of: ${Object.keys(keyMap).join(', ')}`);
+    }
+  } catch (err) {
+    console.error('Failed to get action from OpenClaw:', err.message);
+  }
+});
+```
+
+Run the bot:
+
+```bash
+OPENCLAW_API_KEY=sk-oc-your-key-here node openclaw-bot.js
+```
+
+### Environment Variables
+
+Add to your `.env` file:
+
+```env
+OPENCLAW_API_KEY=sk-oc-your-key-here   # Required for AI bots
+```
+
+### Further Reading
+
+- [OpenClaw API Documentation](https://docs.openclaw.ai)
+- [OpenClaw Skills & Plugins Guide](https://docs.openclaw.ai/tools/plugin)
+- [OpenClaw API Authentication](https://clawtrust.ai/blog/openclaw-api-guide)
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Game is laggy
